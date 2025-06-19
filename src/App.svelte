@@ -7,6 +7,20 @@
 <script>
     import { db, auth, serverTime, params, ratingTypes, dev,
             experiment, userGroup, labName, email} from './utils.js';
+    import {
+      doc,
+      collection,
+      getDocs,
+      getDoc,
+      setDoc,
+      updateDoc,
+      deleteDoc
+    } from 'firebase/firestore';
+    import {
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      onAuthStateChanged
+    } from 'firebase/auth';
     
     import { onMount } from 'svelte';
 	import Intro from './pages/Intro.svelte';
@@ -23,12 +37,7 @@
     import MTurkPreview from './pages/MTurkPreview.svelte';
 
 	// path details
-	const ratingsPath = `${experiment}/ratings`;
-	const ratingsDoc = db.doc(ratingsPath);
-	const subjectGroupPath = `${experiment}/subjects/${userGroup}`;
-    const subjectGroupCollection = db.collection(subjectGroupPath);
-    const stimuliPath = `${experiment}/stimuli`;
-    const stimuliDoc = db.doc(stimuliPath);
+	let ratingsPath, ratingsDoc, subjectGroupPath, subjectGroupCollection, stimuliPath, stimuliDoc;
 
 	// declare and set other necessary variables
 	let currVid;
@@ -44,6 +53,18 @@
     let time = 0;
     let initExperiment = false;
     
+	if (!experiment || !userGroup) {
+		currentState = 'config-error';
+		console.error("CONFIGURATION ERROR: The 'experiment' or 'userGroup' variable is not set in src/utils.js. Please define them before running the application.");
+	} else {
+		ratingsPath = `${experiment}/ratings`;
+		ratingsDoc = doc(db, ratingsPath);
+		subjectGroupPath = `${experiment}/subjects/${userGroup}`;
+		subjectGroupCollection = collection(db, subjectGroupPath);
+		stimuliPath = `${experiment}/stimuli`;
+		stimuliDoc = doc(db, stimuliPath);
+	}
+
     // use to validate build type in JS console
     console.log(dev);
 
@@ -51,18 +72,19 @@
         // Change to the new state within Svelte
         if (params.workerId === 'test-worker') {
             currentState = 'consent';
-            let subjectRef = subjectGroupCollection.doc(params.workerId);
-            subjectRef.get().then(function(doc) {
+            console.log('resetTestWorker: subjectGroupPath, workerId:', subjectGroupPath, params.workerId);
+            let subjectRef = doc(db, subjectGroupPath, params.workerId);
+            getDoc(subjectRef).then(function(subjectSnap) {
                 try {
                     let currPath = `${ratingsPath}/${params.workerId}`;
-                    db.collection(currPath).get().then(function(ratingList) {
+                    getDocs(collection(db, currPath)).then(function(ratingList) {
                         // deletes all previous ratings
-                        ratingList.forEach(function(doc) {
-                            console.log('deleting: ', doc.id);
-                            db.collection(currPath).doc(doc.id).delete()   
+                        ratingList.forEach(function(ratingDoc) {
+                            console.log('Deleting rating doc at path:', currPath, ratingDoc.id);
+                            deleteDoc(doc(db, currPath, ratingDoc.id));
                         });      
                         // updates subject log
-                        subjectRef.update({
+                        updateDoc(subjectRef, {
                             startTime: serverTime,
                             consentStatus: 'incomplete'
                         });
@@ -103,10 +125,11 @@
     onMount(async () => { // right when DOM is created
         if (initExperiment) {
             try {
-                auth.onAuthStateChanged(async (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     if (!user) { // if no user
                         try { // grab the worker and assignment ID and attempt login
-                            await auth.signInWithEmailAndPassword(
+                            await signInWithEmailAndPassword(
+                                auth,
                                 `${params.workerId}@experiment.com`,
                                 params.workerId
                             );
@@ -116,7 +139,8 @@
                             if (error.code === 'auth/user-not-found') {
                                 console.log('no user found...creating new credentials');
                                 // if login fails, create new user
-                                await auth.createUserWithEmailAndPassword(
+                                await createUserWithEmailAndPassword(
+                                    auth,
                                     `${params.workerId}@experiment.com`,
                                     params.workerId
                                 );
@@ -129,20 +153,21 @@
                         console.log('user authenticated...');
                         let currUser = auth.currentUser;
                         try { // if user already signed in, grab relevant document
-                            let subjectRef = subjectGroupCollection.doc(params.workerId);
-                            subjectPath = `${subjectGroupPath}/${params.workerId}`; // setting for use in HTML below
-                            subjectRef.get().then(function(doc) {
-                                if (doc.exists) { // load old document
+                        console.log('onMount: subjectGroupPath, workerId:', subjectGroupPath, params.workerId);
+                        let subjectRef = doc(db, subjectGroupPath, params.workerId);
+                        subjectPath = `${subjectGroupPath}/${params.workerId}`; // setting for use in HTML below
+                        getDoc(subjectRef).then(function(subjectSnap) {
+                                if (subjectSnap.exists()) { // load old document
                                     console.log('previous document found...loading state...');
                                     // updates most recent login time
-                                    subjectRef.update({
+                                    updateDoc(subjectRef, {
                                         mostRecentTime: serverTime
                                     });
                                 } else { // create a new document
-                                    subjectGroupCollection.doc(params.workerId).set({name: 'unknown'});
+                                    setDoc(subjectRef, { name: 'unknown' });
                                     console.log('no previous documents found...creating new...');
                                     subjectPath = `${subjectGroupPath}/${params.workerId}`; // setting for use in HTML below
-                                    subjectRef.set({
+                                    setDoc(subjectRef, {
                                         workerId: params.workerId,
                                         assignmentId: params.assignmentId,
                                         hitId: params.hitId,
@@ -152,13 +177,13 @@
                                     });
                                 }
                                 // grab stimuli doc and add all movies to list
-                                stimuliDoc.get().then(function(stimuliTable) {
+                                getDoc(stimuliDoc).then(function(stimuliTable) {
                                     for (var field in stimuliTable.data()) {
                                         moviesRemaining.push(field);         
                                     }
                                     // check to see which movies subject has already viewed (if any)
                                     let currPath = `${ratingsPath}/${params.workerId}`;
-                                    db.collection(currPath).get().then(function(ratingList) {
+                                    getDocs(collection(db, currPath)).then(function(ratingList) {
                                         // removes already completed movies from option set
                                         ratingList.forEach(function(doc) {
                                             moviesRemaining = removeItemOnce(moviesRemaining, doc.id.split("-")[0]);
@@ -172,11 +197,18 @@
                                             let movieIndex = Math.floor(Math.random()*moviesRemaining.length);
                                             let ratingIndex = Math.floor(Math.random()*ratingTypes.length);
                                             currVid = moviesRemaining[movieIndex];
+                                            console.log('Chosen video:', currVid);
                                             currRating = ratingTypes[ratingIndex];
                                             let vidPlusRating = `${currVid}-${currRating}`;
+                                            console.log('Computed ratingDocPathway:', ratingsPath, params.workerId, vidPlusRating);
                                             ratingDocPathway = `${ratingsPath}/${params.workerId}/${vidPlusRating}`;
                                             // grab URL for video sourcing 
                                             currVidSrc = stimuliTable.data()[currVid];
+                                            if (!currVidSrc) {
+                                                console.warn("Missing video source for:", currVid);
+                                                updateState('complete');
+                                                return;
+                                            }
                                             updateState('consent');
                                             
                                         } else {
@@ -204,12 +236,21 @@
 	// this function updates the current state of the user to 
 	// dynamically render different parts of the experiment (i.e. instructions, quiz, etc)
   	const updateState = async (newState) => {
-    	// Change to the new state within Svelte
 		currentState = newState;
-		try {
-			await db.doc(`${experiment}/subjects/${userGroup}/${params.workerId}`).update({
-				currentState
+
+		if (!experiment || !userGroup || !params.workerId) {
+			console.warn("Invalid Firestore path for updateState:", {
+				experiment,
+				userGroup,
+				workerId: params.workerId
 			});
+			return;
+		}
+
+		try {
+			console.log('Firestore path segments:', experiment, 'subjects', userGroup, params.workerId);
+			const ref = doc(db, experiment, 'subjects', userGroup, params.workerId);
+			await updateDoc(ref, { currentState });
 			console.log('updated user state');
 		} catch (error) {
 			console.error(error);
@@ -219,7 +260,7 @@
 	// registers user as a bot
 	const failedBot = async () => {
 		try {
-			await db.doc(`${experiment}/subjects/${userGroup}/${params.workerId}`).update({
+			await updateDoc(doc(db, experiment, 'subjects', userGroup, params.workerId), {
 				botStatus: "bot"
 			});
 			console.log('user identified as bot');
@@ -230,27 +271,47 @@
 
 	// registers rejected consent form
 	const failedConsent = async () => {
-		try {
-			await db.doc(`${experiment}/subjects/${userGroup}/${params.workerId}`).update({
-				consentStatus: 'failed'
-			});
-			console.log('user rejected consent');
-		} catch (error) {
-			console.error(error);
-		}
+	    if (!experiment || !userGroup || !params.workerId) {
+	        console.warn("Invalid Firestore path for failedConsent:", {
+	            experiment,
+	            userGroup,
+	            workerId: params.workerId
+	        });
+	        return;
+	    }
+
+	    try {
+	        console.log('Firestore path segments:', experiment, 'subjects', userGroup, params.workerId);
+	        await updateDoc(doc(db, experiment, 'subjects', userGroup, params.workerId), {
+	            consentStatus: 'failed'
+	        });
+	        console.log('user rejected consent');
+	    } catch (error) {
+	        console.error(error);
+	    }
 	};
 
 	// registers accepted consent form
 	const agreedConsent = async () => {
-		try {
-			await db.doc(`${experiment}/subjects/${userGroup}/${params.workerId}`).update({
-				consentStatus: 'signed'
-			});
-			updateState('botcheck-instruct');
-			console.log('user accepted consent');
-		} catch (error) {
-			console.error(error);
-		}
+	    if (!experiment || !userGroup || !params.workerId) {
+	        console.warn("Invalid Firestore path for agreedConsent:", {
+	            experiment,
+	            userGroup,
+	            workerId: params.workerId
+	        });
+	        return;
+	    }
+
+	    try {
+	        console.log('Firestore path segments:', experiment, 'subjects', userGroup, params.workerId);
+	        await updateDoc(doc(db, experiment, 'subjects', userGroup, params.workerId), {
+	            consentStatus: 'signed'
+	        });
+	        updateState('botcheck-instruct');
+	        console.log('user accepted consent');
+	    } catch (error) {
+	        console.error(error);
+	    }
 	};
 
 	// function used to remove previously watched videos from array

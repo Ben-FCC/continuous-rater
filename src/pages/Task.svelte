@@ -63,7 +63,7 @@
 		></CustomVideo>
 		<RatingBox 
 			pathway={pathway}
-			rating={rating}
+			bind:rating={rating}
 			bind:time={time}
 			bind:paused={paused}
 			ratingType={ratingType}>
@@ -71,4 +71,3 @@
 		<h2 style="text-align:center">Please rate how <strong>{ratingType}</strong> you feel</h2>
 	</div>
 </main>
-

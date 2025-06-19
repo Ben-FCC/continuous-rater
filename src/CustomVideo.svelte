@@ -6,6 +6,9 @@
     
 	export let time = 0;
 	export let src;
+	$: if (!src) {
+	  console.warn('CustomVideo: no video src provided');
+	}
 	let duration;
 	let paused = true;
 	let showControls = true;
@@ -124,25 +127,34 @@
 		border-radius: 2px;
         box-shadow: 2px 2px 8px rgba(0,0,0,0.1);   
 	}
+
+	.video-error {
+		color: red;
+		font-weight: bold;
+		padding: 1em;
+		text-align: center;
+	}
 </style>
 
 <div class="video_cont">
-	<video id="my-video"
-		src={src}
-		preload="auto"
-		on:mousemove={handleMousemove}
-		on:mousedown={handleMousedown}
-		bind:currentTime={time}
-		bind:duration
-		bind:paused
-		on:ended={handleEnd}
-	></video>
-	<div class="controls" style="opacity: {duration && showControls ? 1 : 0}">
-		<progress value="{(time / duration) || 0}"/>
-		<div class="info">
-			<span class="time">{format(time)}</span>
-			<span id="instruction_text">click video to {paused ? 'play' : 'pause'}</span>
-			<span class="time">{format(duration)}</span>
-		</div>
-	</div>
+  <video
+    id="my-video"
+    src={src}
+    preload="auto"
+    on:mousemove={handleMousemove}
+    on:mousedown={handleMousedown}
+    bind:currentTime={time}
+    bind:duration
+    bind:paused
+    on:ended={handleEnd}
+    on:error={() => console.error(`CustomVideo: video load error for ${src}`)}
+  ></video>
+  <div class="controls" style="opacity: {duration && showControls ? 1 : 0}">
+    <progress value="{(time / duration) || 0}"/>
+    <div class="info">
+      <span class="time">{format(time)}</span>
+      <span id="instruction_text">click video to {paused ? 'play' : 'pause'}</span>
+      <span class="time">{format(duration)}</span>
+    </div>
+  </div>
 </div>

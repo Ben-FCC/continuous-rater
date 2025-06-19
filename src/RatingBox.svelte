@@ -2,6 +2,7 @@
 
 <script>
     import { db } from './utils.js';
+    import { doc, setDoc, updateDoc } from 'firebase/firestore';
     
     export let ratingType;
     export let rating; // median value for ratings
@@ -21,8 +22,8 @@
     
     // grabs reference for rating doc or creates it
     if (ratingBoxUse != 'demo page') {
-        docRef = db.doc(pathway);
-        docRef.set({0: rating});
+        docRef = doc(db, pathway);
+        setDoc(docRef, { 0: rating });
     }
 
     let stepSize = ogStepSize;
@@ -54,7 +55,7 @@
                 if (ratingBoxUse != 'demo page') {
                     let dictTime = Math.round(time);
                     let dictVal = Math.round(rating);
-                    docRef.update({[dictTime]: dictVal});
+                    updateDoc(docRef, { [dictTime]: dictVal });
                 }
             }
 
@@ -69,7 +70,7 @@
                 if (ratingBoxUse != 'demo page') {
                     let dictTime = Math.round(time);
                     let dictVal = Math.round(rating);
-                    docRef.update({[dictTime]: dictVal});
+                    updateDoc(docRef, { [dictTime]: dictVal });
                 }
             }
         }
