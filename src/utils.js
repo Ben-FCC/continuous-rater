@@ -1,14 +1,13 @@
-
 // ************************************************
 // THIS PAGE REQUIRES EXPERIMENTER INPUT
 // ************************************************
 
 // don't change these import statements
-import firebase from "firebase/app";
-import "firebase/firestore";
-import "firebase/auth";
-import "firebase/performance";
-import "firebase/analytics";
+import { initializeApp } from "firebase/app";
+import { getFirestore, Timestamp } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getPerformance } from "firebase/performance";
+import { getAnalytics } from "firebase/analytics";
 import { writable } from 'svelte/store';
 
 // ************************************************
@@ -66,10 +65,12 @@ let firebaseConfig = {
 export const dev = DEV_MODE ? writable(true) : writable(false);
 
 // firebase info (export for use elsewhere in app)
-firebase.initializeApp(firebaseConfig);
-export const db = firebase.firestore();
-export const auth = firebase.auth();
-export const serverTime = firebase.firestore.Timestamp.now();
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const perf = getPerformance(app);
+export const analytics = getAnalytics(app);
+export const serverTime = Timestamp.now();
 
 // Functions to parse the URL to get workerID, hitID, and assignmentID
 const unescapeURL = (s) => decodeURIComponent(s.replace(/\+/g, '%20'));
